@@ -1,4 +1,4 @@
-name: Build and Push Adminarr
+name: Build and Push Adminarr_dev
 
 on:
   push:
