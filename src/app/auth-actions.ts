@@ -1,16 +1,11 @@
 "use server";
 
-import { PrismaClient } from "@prisma/client";
 import { compare, hash } from "bcryptjs";
 import { cookies } from "next/headers";
 import { SignJWT, jwtVerify } from "jose";
 import { redirect } from "next/navigation";
-
-// --- PRISMA 6 SINGLETON PATTERN ---
-// Prevents connection exhaustion during Next.js hot-reloads
-const globalForPrisma = global as unknown as { prisma: PrismaClient };
-const prisma = globalForPrisma.prisma || new PrismaClient();
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+// CRITICAL FIX: Use the shared global singleton to prevent database locking
+import prisma from "@/lib/db";
 
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || "default-secret-key-change-me");
 

@@ -1,9 +1,5 @@
-import { PrismaClient } from "@prisma/client";
-
-// Singleton pattern for Prisma
-const globalForPrisma = global as unknown as { prisma: PrismaClient };
-const prisma = globalForPrisma.prisma || new PrismaClient();
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+// CRITICAL FIX: Use the shared global singleton to prevent database locking
+import prisma from "@/lib/db";
 
 export async function getSettings() {
   let settings = await prisma.settings.findUnique({ where: { id: "global" } });

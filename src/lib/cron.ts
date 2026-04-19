@@ -2,12 +2,14 @@ import { performSync } from "@/app/data";
 import { scanEmailAccounts } from "@/lib/email-scanner";
 import { checkOverdueStatus } from "@/app/actions";
 
-// Prevent multiple instances in development
-let isCronRunning = false;
+// Prevent multiple instances in development and Docker restarts
+declare global {
+  var isCronRunning: boolean | undefined;
+}
 
 export function initCron() {
-  if (isCronRunning) return;
-  isCronRunning = true;
+  if (globalThis.isCronRunning) return;
+  globalThis.isCronRunning = true;
 
   console.log("Initializing Job Scheduler...");
 
@@ -27,7 +29,6 @@ export function initCron() {
     console.log("Cron: Starting Email Scan...");
     try {
       const result = await scanEmailAccounts();
-      // logs might be undefined if no logs generated
       const lastLog = result.logs && result.logs.length > 0 ? result.logs[result.logs.length - 1] : "No new emails.";
       console.log("Cron: Email Scan Complete.", lastLog);
     } catch (e) {

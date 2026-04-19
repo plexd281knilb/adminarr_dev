@@ -6,7 +6,7 @@ import {
     getSubscribers, 
     addManualPayment, 
     linkPaymentToUser, 
-    unlinkPayment, // <--- Added this
+    unlinkPayment,
     splitPayment, 
     deletePayment, 
     getEmailAccounts, 
@@ -26,7 +26,6 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-// --- Added Unlink icon here ---
 import { Plus, Link as LinkIcon, Unlink, Split, Trash2, Mail, Settings, RefreshCw, Merge, AlertTriangle, CheckSquare, Square, ArrowLeft, DollarSign } from "lucide-react";
 import { format } from "date-fns";
 import { useRouter } from "next/navigation";
@@ -65,10 +64,9 @@ export default function PaymentsPage() {
     const handleScan = async () => {
         setIsScanning(true);
         try {
-            // @ts-ignore
             const result = await triggerPaymentScan();
-            if (result && !result.success) {
-                 alert("Scan Failed:\n" + result.logs.join("\n"));
+            if (result && !(result as any).success) {
+                 alert("Scan Failed:\n" + (result as any).logs.join("\n"));
             } else {
                  await loadData();
             }
@@ -113,7 +111,6 @@ export default function PaymentsPage() {
         loadData();
     };
 
-    // --- NEW UNLINK HANDLER ---
     const handleUnlink = async (id: string) => {
         if (!confirm("Are you sure you want to unlink this payment?")) return;
         await unlinkPayment(id);
@@ -156,7 +153,6 @@ export default function PaymentsPage() {
         <div className="space-y-6 p-8">
             <div className="flex justify-between items-center">
                 <div className="flex items-center gap-4">
-                    {/* BACK BUTTON */}
                     <Button variant="ghost" size="icon" onClick={() => router.push("/users")} className="shrink-0">
                         <ArrowLeft className="h-6 w-6" />
                     </Button>
@@ -170,7 +166,6 @@ export default function PaymentsPage() {
                         <AlertTriangle className="h-4 w-4 mr-2" /> Reset DB
                     </Button>
 
-                    {/* SETTINGS BUTTON */}
                     <Button variant="outline" onClick={() => setIsSettingsOpen(true)}>
                         <Settings className="h-4 w-4 mr-2" /> Settings
                     </Button>
@@ -255,7 +250,6 @@ export default function PaymentsPage() {
                                         </td>
                                         <td className="px-4 py-3 text-right">
                                             {p.status === "Linked" ? (
-                                                // --- UNLINK BUTTON ---
                                                 <div className="flex justify-end gap-2">
                                                     <Button size="sm" variant="ghost" disabled className="text-muted-foreground">Linked</Button>
                                                     <Button size="sm" variant="ghost" onClick={() => handleUnlink(p.id)} title="Unlink Payment">
@@ -270,7 +264,8 @@ export default function PaymentsPage() {
                                                     <Button size="sm" variant="ghost" onClick={() => { setSelectedPayment(p); setIsSplitOpen(true); }} title="Split">
                                                         <Split className="h-4 w-4" />
                                                     </Button>
-                                                    <Button size="sm" variant="ghost" onClick={() => deletePayment(p.id)} title="Delete">
+                                                    {/* CRITICAL FIX: Ensure loadData is called after the action finishes so the row disappears */}
+                                                    <Button size="sm" variant="ghost" onClick={async () => { await deletePayment(p.id); await loadData(); }} title="Delete">
                                                         <Trash2 className="h-4 w-4 text-red-500" />
                                                     </Button>
                                                 </div>
@@ -361,7 +356,7 @@ export default function PaymentsPage() {
                         <div className="grid grid-cols-2 gap-4 items-end">
                             <div className="space-y-2">
                                 <Label>Split 1 Amount</Label>
-                                <Input name="amount1" type="number" step="0.01" defaultValue={(selectedPayment?.amount / 2).toFixed(2)} />
+                                <Input name="amount1" type="number" step="0.01" defaultValue={selectedPayment ? (selectedPayment.amount / 2).toFixed(2) : ""} />
                             </div>
                             <div className="space-y-2">
                                 <Label>User 1 (Optional)</Label>
@@ -377,7 +372,7 @@ export default function PaymentsPage() {
                         <div className="grid grid-cols-2 gap-4 items-end">
                             <div className="space-y-2">
                                 <Label>Split 2 Amount</Label>
-                                <Input name="amount2" type="number" step="0.01" defaultValue={(selectedPayment?.amount / 2).toFixed(2)} />
+                                <Input name="amount2" type="number" step="0.01" defaultValue={selectedPayment ? (selectedPayment.amount / 2).toFixed(2) : ""} />
                             </div>
                             <div className="space-y-2">
                                 <Label>User 2 (Optional)</Label>

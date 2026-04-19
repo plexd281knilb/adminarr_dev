@@ -1,12 +1,11 @@
 "use server";
 
-import { PrismaClient } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { scanEmailAccounts } from "@/lib/email-scanner"; 
 import { hash } from "bcryptjs"; 
 import nodemailer from "nodemailer"; 
+// We are securely using the singleton!
 import prisma from "@/lib/db"
-
 
 // --- HELPER: Fix Date Offsets ---
 function parseDate(dateStr: string | null | undefined): Date | null {
@@ -78,7 +77,6 @@ export async function saveFeeSettings(monthly: number, yearly: number) {
         create: { id: "global", monthlyFee: monthly, yearlyFee: yearly }
     });
     
-    // This was the missing piece that caused your original issue!
     revalidatePath("/settings");
     revalidatePath("/payments");
 }
@@ -476,8 +474,6 @@ export async function deleteAppUser(id: string) {
         console.error("Failed to delete user:", e);
     }
 }
-
-
 
 export async function sendManualEmail(formData: FormData) {
     const to = formData.get("to") as string;

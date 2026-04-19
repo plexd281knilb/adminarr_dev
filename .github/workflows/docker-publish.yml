@@ -2,7 +2,7 @@ name: Build and Push Adminarr_dev
 
 on:
   push:
-    branches: [ "master" ] # Triggers on push to main branch
+    branches: [ "master" ] # Triggers on push to master branch
 
 env:
   REGISTRY: ghcr.io
@@ -35,6 +35,5 @@ jobs:
           context: .
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          # This uses the specific Dockerfile fixes we implemented
           cache-from: type=gha
           cache-to: type=gha,mode=max

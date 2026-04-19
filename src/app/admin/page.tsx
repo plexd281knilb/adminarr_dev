@@ -27,7 +27,6 @@ export default function AdminOverviewPage() {
         return cleanTime || "00:00:00";
     };
 
-    // FIX: Removed whitespace-nowrap and added max-w-full with text-center so it wraps on tiny screens safely
     const getStatusBadge = (status: string) => {
         switch(status) {
             case "Pending":
@@ -63,7 +62,8 @@ export default function AdminOverviewPage() {
         };
 
         fetchLiveStats();
-        const intervalId = setInterval(fetchLiveStats, 3000);
+        // PERFORMANCE FIX: Increased from 3 seconds to 10 seconds to prevent self-DDoS
+        const intervalId = setInterval(fetchLiveStats, 10000);
         return () => clearInterval(intervalId);
     }, []);
 
@@ -98,7 +98,7 @@ export default function AdminOverviewPage() {
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                       <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
                     </span>
-                    <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Live (3s)</span>
+                    <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Live (10s)</span>
                 </div>
             </div>
 

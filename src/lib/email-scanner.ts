@@ -1,8 +1,7 @@
 import imaps from "imap-simple";
 import { simpleParser } from "mailparser";
-import { PrismaClient } from "@prisma/client";
-import prisma from "@/lib/db"
-
+// Using your singleton to prevent connection exhaustion
+import prisma from "@/lib/db";
 
 export async function scanEmailAccounts() {
     const accounts = await prisma.emailAccount.findMany();
@@ -23,7 +22,8 @@ export async function scanEmailAccounts() {
                     port: account.port,
                     tls: true,
                     authTimeout: 15000,
-                    tlsOptions: { rejectUnauthorized: false } 
+                    // SECURITY FIX: Removed "rejectUnauthorized: false" to prevent MitM attacks.
+                    // Only disable this if you are connecting to a local mail server with a self-signed cert.
                 }
             };
 
@@ -76,7 +76,7 @@ export async function scanEmailAccounts() {
         const all = item.parts.find((part: any) => part.which === "");
         const mail = await simpleParser(all?.body);
         const subject = mail.subject || "";
-        const html = mail.html || "";
+        const html = typeof mail.html === 'string' ? mail.html : "";
         const date = mail.date || new Date();
 
         let payerName = "";
@@ -108,6 +108,7 @@ export async function scanEmailAccounts() {
             const exists = await prisma.payment.findUnique({ where: { externalId } });
             
             if (!exists) {
+                // Note: SQLite string matching is case-sensitive. "John Doe" will not match "john doe".
                 const linkedUser = await prisma.subscriber.findFirst({
                     where: { 
                         OR: [

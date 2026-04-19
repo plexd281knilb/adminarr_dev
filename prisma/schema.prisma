@@ -77,7 +77,7 @@ model MediaApp {
   externalUrl String?  // External/Public Link (e.g. https://requests.mydomain.com)
   apiKey      String?
   createdAt   DateTime @default(now())
-  updatedAt   DateTime @default(now()) @updatedAt
+  updatedAt   DateTime @updatedAt
 }
 
 model IgnoredUser {
@@ -98,7 +98,8 @@ model Payment {
   status       String      @default("Unlinked")
   subscriberId String?
   createdAt    DateTime    @default(now())
-  subscriber   Subscriber? @relation(fields: [subscriberId], references: [id])
+  // Added Cascade delete to prevent database errors if a subscriber is removed
+  subscriber   Subscriber? @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
 }
 
 model EmailAccount {

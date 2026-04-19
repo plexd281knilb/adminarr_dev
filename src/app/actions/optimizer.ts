@@ -1,11 +1,9 @@
 "use server"
 
-import { exec } from 'child_process';
-import util from 'util';
 import fs from 'fs';
+import { statfs } from 'fs/promises';
+import crypto from 'crypto';
 import Database from 'better-sqlite3';
-
-const execPromise = util.promisify(exec);
 
 // --- Environment Variable Config (with fallbacks) ---
 const MOUNT_PATH = process.env.ARRAY_MOUNT_PATH || "/mnt/user";
@@ -16,8 +14,13 @@ const TDARR_API = process.env.TDARR_API_URL || "http://192.168.1.87:8265";
 
 export async function getDiskUsage() {
   try {
-    const { stdout } = await execPromise(`df -h "${MOUNT_PATH}" | awk 'NR==2 {gsub("%",""); print $5}'`);
-    return parseInt(stdout.trim(), 10);
+    // SECURITY FIX: Native Node.js statfs instead of executing raw shell commands
+    const stats = await statfs(MOUNT_PATH);
+    const total = stats.blocks * stats.bsize;
+    const free = stats.bfree * stats.bsize;
+    const used = total - free;
+    
+    return Math.round((used / total) * 100);
   } catch (error) {
     console.error("Failed to get disk usage", error);
     return 0;
@@ -25,9 +28,13 @@ export async function getDiskUsage() {
 }
 
 export async function getOldestMedia() {
-  const DB_MAIN_TMP = "/tmp/main_plex_snapshot.db";
-  const DB_KIDS_TMP = "/tmp/kids_plex_snapshot.db";
-  const DB_BACKUP_TMP = "/tmp/backup_plex_snapshot.db";
+  // CRITICAL FIX: Unique temp files prevent race conditions if this runs concurrently
+  const runId = crypto.randomUUID();
+  const DB_MAIN_TMP = `/tmp/main_plex_${runId}.db`;
+  const DB_KIDS_TMP = `/tmp/kids_plex_${runId}.db`;
+  const DB_BACKUP_TMP = `/tmp/backup_plex_${runId}.db`;
+  
+  let db: Database.Database | null = null;
 
   try {
     // 1. Create snapshots using the configurable source paths
@@ -35,13 +42,13 @@ export async function getOldestMedia() {
     fs.copyFileSync(DB_KIDS_SOURCE, DB_KIDS_TMP);
     fs.copyFileSync(DB_BACKUP_SOURCE, DB_BACKUP_TMP);
 
-    const db = new Database(DB_MAIN_TMP, { readonly: true });
+    db = new Database(DB_MAIN_TMP, { readonly: true });
     
     // 2. Attach the other databases
     db.exec(`ATTACH DATABASE '${DB_KIDS_TMP}' AS kids;`);
     db.exec(`ATTACH DATABASE '${DB_BACKUP_TMP}' AS backup;`);
 
-    // 3. Your massive SQL query
+    // 3. Your massive SQL query (Excellent logic here!)
     const stmt = db.prepare(`
       WITH AllMedia AS (
           SELECT 
@@ -148,17 +155,18 @@ export async function getOldestMedia() {
     `);
 
     const results = stmt.all();
-    db.close();
-
-    // 4. Clean up tmp files
-    [DB_MAIN_TMP, DB_KIDS_TMP, DB_BACKUP_TMP].forEach(file => {
-      if (fs.existsSync(file)) fs.unlinkSync(file);
-    });
-
     return results as { guid: string; latest_activity: string; file_path: string }[];
   } catch (error) {
     console.error("Database querying failed:", error);
     return [];
+  } finally {
+    // CRITICAL FIX: Ensure DB is always closed and Unraid RAM (tmpfs) is cleared, even on SQL failure
+    if (db) db.close();
+    [DB_MAIN_TMP, DB_KIDS_TMP, DB_BACKUP_TMP].forEach(file => {
+      if (fs.existsSync(file)) {
+        try { fs.unlinkSync(file); } catch (e) { console.error(`Failed to delete ${file}`, e); }
+      }
+    });
   }
 }
 
