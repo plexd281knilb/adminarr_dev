@@ -4,13 +4,18 @@ services:
     build: .
     image: ghcr.io/plexd281knilb/adminarr:latest
     restart: unless-stopped
+    user: root 
     ports:
       - "3000:3000"
-    dns:              # <--- Add this section
-      - 8.8.8.8       # Google DNS
-      - 1.1.1.1       # Cloudflare DNS
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    env_file:
+      - .env
     environment:
-      - DATABASE_URL=file:/app/data/dev.db
+      - DATABASE_URL=file:/app/prisma/dev.db
       - NODE_ENV=production
     volumes:
-      - ./data:/app/data
+      - ./prisma:/app/prisma
+      - ${ARRAY_MOUNT_PATH:-/mnt/user}:${ARRAY_MOUNT_PATH:-/mnt/user}
+      - ${REMOTES_MOUNT_PATH:-/mnt/remotes}:${REMOTES_MOUNT_PATH:-/mnt/remotes}

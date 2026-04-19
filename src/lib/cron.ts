@@ -1,6 +1,6 @@
 import { performSync } from "@/app/data";
 import { scanEmailAccounts } from "@/lib/email-scanner";
-import { checkOverdueStatus } from "@/app/actions"; // <--- Import this
+import { checkOverdueStatus } from "@/app/actions";
 
 // Prevent multiple instances in development
 let isCronRunning = false;
@@ -27,7 +27,9 @@ export function initCron() {
     console.log("Cron: Starting Email Scan...");
     try {
       const result = await scanEmailAccounts();
-      console.log("Cron: Email Scan Complete.", result.logs[result.logs.length - 1]);
+      // logs might be undefined if no logs generated
+      const lastLog = result.logs && result.logs.length > 0 ? result.logs[result.logs.length - 1] : "No new emails.";
+      console.log("Cron: Email Scan Complete.", lastLog);
     } catch (e) {
       console.error("Cron: Email Scan Failed", e);
     }
@@ -47,10 +49,10 @@ export function initCron() {
   // Run immediately on server start
   runSyncJob();
   runScanJob();
-  runOverdueJob(); // <--- Run immediately
+  runOverdueJob();
 
   // Schedule for every 60 minutes
   setInterval(runSyncJob, 1000 * 60 * 60);
   setInterval(runScanJob, 1000 * 60 * 60);
-  setInterval(runOverdueJob, 1000 * 60 * 60); // <--- Schedule hourly
+  setInterval(runOverdueJob, 1000 * 60 * 60);
 }

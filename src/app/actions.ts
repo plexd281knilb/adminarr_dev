@@ -5,8 +5,8 @@ import { revalidatePath } from "next/cache";
 import { scanEmailAccounts } from "@/lib/email-scanner"; 
 import { hash } from "bcryptjs"; 
 import nodemailer from "nodemailer"; 
+import prisma from "@/lib/db"
 
-const prisma = new PrismaClient();
 
 // --- HELPER: Fix Date Offsets ---
 function parseDate(dateStr: string | null | undefined): Date | null {
@@ -17,7 +17,7 @@ function parseDate(dateStr: string | null | undefined): Date | null {
 // --- HELPER: Clean URL (Removes trailing slashes) ---
 function cleanUrl(url: string): string {
     if (!url) return "";
-    return url.replace(/\/$/, ""); // Removes trailing slash if present
+    return url.replace(/\/$/, ""); 
 }
 
 // --- DATA FETCHERS ---
@@ -29,22 +29,6 @@ export async function getSubscribers() {
 
 export async function getSettings() {
     return await prisma.settings.findFirst() || {};
-}
-
-// --- DASHBOARD ACCESSORS ---
-export async function getDashboardActivity() {
-  const { fetchDashboardData } = await import("@/app/data");
-  return await fetchDashboardData();
-}
-
-export async function getMediaAppsActivity() {
-  const { fetchMediaAppsActivity } = await import("@/app/data");
-  return await fetchMediaAppsActivity();
-}
-
-export async function getGlancesNodeDetails(id: string) {
-  const { fetchGlancesNodeDetails } = await import("@/app/data");
-  return await fetchGlancesNodeDetails(id);
 }
 
 // --- ACTION: CHECK OVERDUE STATUS ---
@@ -93,6 +77,9 @@ export async function saveFeeSettings(monthly: number, yearly: number) {
         update: { monthlyFee: monthly, yearlyFee: yearly },
         create: { id: "global", monthlyFee: monthly, yearlyFee: yearly }
     });
+    
+    // This was the missing piece that caused your original issue!
+    revalidatePath("/settings");
     revalidatePath("/payments");
 }
 
@@ -133,60 +120,19 @@ export async function getGlancesInstances() {
     return await prisma.glancesInstance.findMany();
 }
 
-// --- SERVICE ACTIONS ---
-
-export async function addService(formData: FormData) {
-  const name = formData.get("name") as string;
-  const url = formData.get("url") as string;
-  await prisma.service.create({ data: { name, url } });
-  revalidatePath("/settings");
-}
-
-export async function removeService(id: string) {
-  await prisma.service.delete({ where: { id } });
-  revalidatePath("/settings");
-}
-
-// --- MEDIA APP ACTIONS ---
+// --- MEDIA APPS ACTIONS ---
 
 export async function addMediaApp(formData: FormData) {
-  const type = formData.get("type") as string;
   const name = formData.get("name") as string;
+  const type = formData.get("type") as string;
   const url = formData.get("url") as string;
-  const externalUrl = formData.get("externalUrl") as string; // <--- Capture this
+  const externalUrl = formData.get("externalUrl") as string;
   const apiKey = formData.get("apiKey") as string;
   
   await prisma.mediaApp.create({ 
-      data: { 
-          type, 
-          name, 
-          url, 
-          externalUrl: externalUrl || null, // Save as null if empty
-          apiKey 
-      } 
+      data: { name, type, url, externalUrl, apiKey } 
   });
   revalidatePath("/settings");
-}
-
-export async function updateMediaApp(formData: FormData) {
-    const id = formData.get("id") as string;
-    const type = formData.get("type") as string;
-    const name = formData.get("name") as string;
-    const url = formData.get("url") as string;
-    const externalUrl = formData.get("externalUrl") as string;
-    const apiKey = formData.get("apiKey") as string;
-
-    await prisma.mediaApp.update({
-        where: { id },
-        data: {
-            type,
-            name,
-            url,
-            externalUrl: externalUrl || null,
-            apiKey
-        }
-    });
-    revalidatePath("/settings");
 }
 
 export async function removeMediaApp(id: string) {
@@ -194,7 +140,7 @@ export async function removeMediaApp(id: string) {
   revalidatePath("/settings");
 }
 
-export async function getMediaApps() {
+export async function getMediaAppsList() {
     return await prisma.mediaApp.findMany();
 }
 
@@ -210,7 +156,6 @@ export async function updateSubscriber(id: string, data: any) {
             status: data.status,
             billingCycle: data.billingCycle,
             nextPaymentDate: parseDate(data.nextPaymentDate),
-            // CHANGE THIS LINE: Use 'undefined' instead of 'null'
             lastPaymentAmount: data.lastPaymentAmount ? parseFloat(data.lastPaymentAmount) : undefined, 
             lastPaymentDate: parseDate(data.lastPaymentDate),
             notes: data.notes
@@ -229,8 +174,7 @@ export async function addManualSubscriber(data: any) {
             status: data.status || "Active",
             billingCycle: data.billingCycle || "Monthly",
             nextPaymentDate: parseDate(data.nextPaymentDate),
-            // CHANGE THIS LINE AS WELL
-            lastPaymentAmount: data.lastPaymentAmount ? parseFloat(data.lastPaymentAmount) : 0, // Default to 0 for new creation if empty
+            lastPaymentAmount: data.lastPaymentAmount ? parseFloat(data.lastPaymentAmount) : 0,
             lastPaymentDate: parseDate(data.lastPaymentDate),
             notes: data.notes
         }
@@ -307,24 +251,19 @@ export async function linkPaymentToUser(paymentId: string, subscriberId: string)
     
     if (!payment || !sub) return;
 
-    // 1. Fetch Global Settings for Fees
-    const settings = await prisma.settings.findFirst() || { monthlyFee: 10, yearlyFee: 100 }; // Fallback defaults
+    const settings = await prisma.settings.findFirst() || { monthlyFee: 10, yearlyFee: 100 }; 
     const cycle = sub.billingCycle || "Monthly";
     
-    // 2. Determine Expected Fee & Threshold
     let expectedFee = 0;
-    let threshold = 0;
 
     if (cycle === "Yearly") {
         expectedFee = settings.yearlyFee;
-        threshold = 5; // $5 Tolerance
     } else {
         expectedFee = settings.monthlyFee;
-        threshold = 1; // $1 Tolerance
     }
 
-    // 3. Check if Payment is Sufficient
-    const isSufficient = payment.amount >= (expectedFee - threshold);
+    // STRICT $1 MATCH: Payment must be exactly within $1 of the expected fee
+    const isSufficient = Math.abs(payment.amount - expectedFee) <= 1;
 
     let updateData: any = {
         fullName: payment.payerName,
@@ -332,7 +271,6 @@ export async function linkPaymentToUser(paymentId: string, subscriberId: string)
         lastPaymentDate: payment.date
     };
 
-    // 4. Only update Due Date & Status if Sufficient
     if (isSufficient) {
         let newDueDate = sub.nextPaymentDate ? new Date(sub.nextPaymentDate) : new Date(payment.date);
         const paymentDate = new Date(payment.date);
@@ -348,7 +286,6 @@ export async function linkPaymentToUser(paymentId: string, subscriberId: string)
                  newDueDate = anchor;
             }
         } else {
-            // Monthly
             let anchorDate = new Date(newDueDate); 
             if (paymentDate > anchorDate) {
                 anchorDate = new Date(paymentDate);
@@ -358,17 +295,14 @@ export async function linkPaymentToUser(paymentId: string, subscriberId: string)
         }
 
         updateData.nextPaymentDate = newDueDate;
-        // Keep Exempt if they are exempt, otherwise set Active
         updateData.status = sub.status === "Exempt" ? "Exempt" : "Active";
     }
 
-    // 5. Always Link the Payment
     await prisma.payment.update({
         where: { id: paymentId },
         data: { subscriberId, status: "Linked" }
     });
 
-    // 6. Update Subscriber (conditionally updates date/status)
     await prisma.subscriber.update({
         where: { id: subscriberId },
         data: updateData
@@ -507,162 +441,43 @@ export async function createAppUser(formData: FormData) {
     }
 }
 
+export async function updateAppUser(formData: FormData) {
+    const id = formData.get("id") as string;
+    const username = formData.get("username") as string;
+    const email = formData.get("email") as string;
+    const role = formData.get("role") as string;
+    const password = formData.get("password") as string;
+
+    const updateData: any = { username, email, role };
+
+    // Only update the password if they actually typed a new one
+    if (password && password.trim() !== "") {
+        updateData.password = await hash(password, 10);
+    }
+
+    try {
+        await prisma.user.update({
+            where: { id },
+            data: updateData
+        });
+        revalidatePath("/settings");
+        revalidatePath("/settings/access");
+    } catch (e) {
+        console.error("Failed to update user", e);
+    }
+}
+
 export async function deleteAppUser(id: string) {
     try {
         await prisma.user.delete({ where: { id } });
-        // FIX: Revalidate the specific access page so the list updates immediately
         revalidatePath("/settings/access");
         revalidatePath("/settings");
     } catch (e) {
         console.error("Failed to delete user:", e);
-        // Optional: fail silently or throw, but logging helps debug
     }
 }
 
-// --- NEW: LANDING PAGE & SUPPORT ACTIONS ---
 
-export async function getLandingStats() {
-    const [tautulli, glances, apps] = await Promise.all([
-        prisma.tautulliInstance.findMany(),
-        prisma.glancesInstance.findMany(),
-        prisma.mediaApp.findMany()
-    ]);
-
-    let totalStreams = 0;
-    let serverStats: any[] = [];
-    let downApps: string[] = [];
-
-    // 1. Tautulli Streams
-    await Promise.all(tautulli.map(async (t) => {
-        let baseUrl = cleanUrl(t.url).replace(/\/api\/v2\/?$/, "");
-        const fullUrl = `${baseUrl}/api/v2?apikey=${t.apiKey}&cmd=get_activity`;
-
-        try {
-            const res = await fetch(fullUrl, { next: { revalidate: 10 } });
-            
-            if (!res.ok) {
-                console.error(`Failed Tautulli (${t.name}): ${res.status} ${res.statusText} | URL: ${fullUrl}`);
-                return;
-            }
-            
-            const data = await res.json();
-            if (data.response?.data?.stream_count) {
-                totalStreams += Number(data.response.data.stream_count);
-            }
-        } catch (e: any) { 
-            console.error(`Failed Tautulli (${t.name}): ${e.message} | URL: ${fullUrl}`); 
-        }
-    }));
-
-    // 2. Glances Stats (Auto-Fallback v4 -> v3 -> v2)
-    await Promise.all(glances.map(async (g) => {
-        const cleanGlances = cleanUrl(g.url);
-        
-        // Helper to fetch v4, v3, or v2
-        const fetchGlancesMetric = async (endpoint: string) => {
-            let errorDetails = "";
-            const versions = [4, 3, 2]; // Order of priority
-
-            for (const v of versions) {
-                try {
-                    const url = `${cleanGlances}/api/${v}/${endpoint}`;
-                    const res = await fetch(url, { next: { revalidate: 10 } });
-                    
-                    if (res.ok) return await res.json();
-                    
-                    // Keep track of errors for debugging if all fail
-                    errorDetails += `[v${v}: ${res.status}] `;
-                } catch (e) { /* Check next version */ }
-            }
-            throw new Error(`All versions failed. Tried: ${errorDetails}`);
-        };
-
-        try {
-            const cpu = await fetchGlancesMetric("cpu");
-            const mem = await fetchGlancesMetric("mem");
-            
-            serverStats.push({ 
-                name: g.name, 
-                cpu: cpu.total, 
-                ram: mem.percent, 
-                online: true 
-            });
-        } catch (e: any) {
-            console.error(`Failed Glances (${g.name}): ${e.message}`);
-            serverStats.push({ name: g.name, online: false });
-        }
-    }));
-
-    // 3. App Status
-    await Promise.all(apps.map(async (app) => {
-        try {
-            const controller = new AbortController();
-            const id = setTimeout(() => controller.abort(), 2000); 
-            await fetch(app.url, { signal: controller.signal, mode: 'no-cors' });
-            clearTimeout(id);
-        } catch (e) {
-            downApps.push(app.name);
-        }
-    }));
-
-    return { totalStreams, serverStats, downApps };
-}
-
-// ... (submitSupportTicket and other functions remain the same) ...
-export async function submitSupportTicket(formData: FormData) {
-    const name = formData.get("name") as string;
-    const email = formData.get("email") as string;
-    const issue = formData.get("issue") as string;
-
-    if (!name || !email || !issue) return { error: "All fields required" };
-
-    try {
-        await prisma.supportTicket.create({
-            data: { name, email, issue }
-        });
-
-        const settings = await prisma.settings.findFirst({ where: { id: "global" } });
-        
-        // FIX: Check for BOTH smtpHost AND smtpUser to satisfy TypeScript
-        if (settings?.smtpHost && settings?.smtpUser) {
-            const transporter = nodemailer.createTransport({
-                host: settings.smtpHost,
-                port: settings.smtpPort,
-                secure: settings.smtpPort === 465, 
-                auth: { user: settings.smtpUser, pass: settings.smtpPass },
-            } as any);
-
-            await transporter.sendMail({
-                from: `"Support" <${settings.smtpUser}>`,
-                to: settings.smtpUser, // TypeScript now knows this is a string
-                replyTo: email,
-                subject: `New Ticket from ${name}`,
-                text: `User: ${name} (${email})\n\nIssue:\n${issue}`
-            });
-        }
-        revalidatePath("/");
-        return { success: true };
-    } catch (e) {
-        console.error("Support Ticket Error:", e);
-        return { error: "Failed to submit ticket." };
-    }
-}
-
-export async function getSupportTickets() {
-    return await prisma.supportTicket.findMany({
-        orderBy: { createdAt: 'desc' },
-        take: 50
-    });
-}
-
-export async function updateTicketStatus(id: string, status: string) {
-    await prisma.supportTicket.update({
-        where: { id },
-        data: { status }
-    });
-    revalidatePath("/");
-    revalidatePath("/admin/tickets");
-}
 
 export async function sendManualEmail(formData: FormData) {
     const to = formData.get("to") as string;
@@ -674,7 +489,6 @@ export async function sendManualEmail(formData: FormData) {
     try {
         const settings = await prisma.settings.findFirst({ where: { id: "global" } });
         
-        // FIX: Check BOTH here as well
         if (!settings?.smtpHost || !settings?.smtpUser) {
             return { error: "SMTP settings (Host & User) not configured in Settings." };
         }
@@ -700,26 +514,57 @@ export async function sendManualEmail(formData: FormData) {
     }
 }
 
-export async function getServiceStatus() {
-    // Fetch all generic services
-    const services = await prisma.service.findMany();
-    
-    // Ping them to check status
-    const results = await Promise.all(services.map(async (service) => {
-        try {
-            // 2-second timeout check
-            const controller = new AbortController();
-            const id = setTimeout(() => controller.abort(), 2000);
-            
-            // We use no-cors so we don't crash on CORS errors, just checking connectivity
-            await fetch(service.url, { signal: controller.signal, mode: 'no-cors' });
-            clearTimeout(id);
-            
-            return { ...service, online: true };
-        } catch (e) {
-            return { ...service, online: false };
-        }
-    }));
+// --- DASHBOARD ACCESSORS ---
+export async function getDashboardActivity() {
+  const { fetchDashboardData } = await import("@/app/data");
+  return await fetchDashboardData();
+}
 
-    return results;
+export async function getMediaAppsActivity() {
+  const { fetchMediaAppsActivity } = await import("@/app/data");
+  return await fetchMediaAppsActivity();
+}
+
+// --- UPDATE ACTIONS (EDITING) ---
+
+export async function updateTautulliInstance(formData: FormData) {
+    const id = formData.get("id") as string;
+    const name = formData.get("name") as string;
+    const url = formData.get("url") as string;
+    const apiKey = formData.get("apiKey") as string;
+    await prisma.tautulliInstance.update({ where: { id }, data: { name, url, apiKey } });
+    revalidatePath("/settings");
+}
+
+export async function updateGlancesInstance(formData: FormData) {
+    const id = formData.get("id") as string;
+    const name = formData.get("name") as string;
+    const url = formData.get("url") as string;
+    await prisma.glancesInstance.update({ where: { id }, data: { name, url } });
+    revalidatePath("/settings");
+}
+
+export async function updateMediaApp(formData: FormData) {
+    const id = formData.get("id") as string;
+    const name = formData.get("name") as string;
+    const type = formData.get("type") as string;
+    const url = formData.get("url") as string;
+    const apiKey = formData.get("apiKey") as string;
+    await prisma.mediaApp.update({ where: { id }, data: { name, type, url, apiKey } });
+    revalidatePath("/settings");
+}
+
+export async function updateEmailAccount(data: any) {
+    await prisma.emailAccount.update({
+        where: { id: data.id },
+        data: {
+            name: data.name,
+            host: data.host,
+            user: data.user,
+            pass: data.pass,
+            port: parseInt(data.port)
+        }
+    });
+    revalidatePath("/settings");
+    revalidatePath("/payments");
 }
