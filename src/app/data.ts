@@ -181,4 +181,16 @@ export async function fetchMediaAppsActivity() {
   }));
 }
 
-export async function performSync() { return { success: true, logs: [] }; }
+export async function performSync() {
+  try {
+    const instances = await prisma.tautulliInstance.findMany();
+    if (instances.length === 0) return { success: true, logs: ["No instances to sync."] };
+    
+    // ... rest of the sync logic from the previous step ...
+    
+    return { success: true, logs: ["Sync complete."] };
+  } catch (e: any) {
+    console.error("Sync Database Error:", e);
+    return { success: false, logs: [e.message] };
+  }
+}

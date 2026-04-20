@@ -1,127 +1,138 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
-import { logout } from "@/app/auth-actions" 
+import { useState, useEffect } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { logout } from "@/app/auth-actions"; 
 import { 
   Users, 
   Settings, 
   Menu,
   X,
   LogOut,
-  Shield
-} from "lucide-react"
+  Shield,
+  Trash2,
+  Activity,
+  Layers,
+  LayoutDashboard
+} from "lucide-react";
 
+// --- SHARED NAVIGATION CONFIG ---
+const navItems = [
+  { href: "/admin", icon: Shield, label: "Admin Overview", exact: true },
+  { href: "/optimizer", icon: Trash2, label: "Media Optimizer" },
+  { href: "/users", icon: Users, label: "User List" },
+  { href: "/payments", icon: Users, label: "Payments" },
+  { href: "/settings", icon: Settings, label: "System Settings" },
+];
+
+// --- 1. THE MAIN SIDEBAR (Desktop) ---
 export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
-  const pathname = usePathname()
-  const [mounted, setMounted] = useState(false)
+  const pathname = usePathname();
+  const [mounted, setMounted] = useState(false);
 
-  useEffect(() => setMounted(true), [])
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return null;
 
   return (
-    <div className={cn("pb-12 h-screen border-r bg-sidebar text-sidebar-foreground border-sidebar-border flex flex-col justify-between", className)}>
-      <div className="space-y-4 py-4">
-        <div className="px-3 py-2">
-          <h2 className="mb-2 px-4 text-lg font-semibold tracking-tight">
-            Adminarr
-          </h2>
-          <div className="space-y-1">
+    <div className={cn("hidden lg:flex flex-col h-full w-64 border-r bg-sidebar", className)}>
+      <div className="flex flex-col h-full py-6 px-4">
+        <div className="mb-8 px-2">
+          <h2 className="text-2xl font-bold tracking-tighter text-primary italic">Adminarr</h2>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-[0.2em] font-black opacity-70">Master Command</p>
+        </div>
+        
+        <div className="space-y-1.5 flex-1">
+          {navItems.map((item) => {
+            const active = item.exact ? pathname === item.href : pathname.startsWith(item.href);
+            return (
+              <Link key={item.href} href={item.href}>
+                <Button variant={active ? "secondary" : "ghost"} className={cn("w-full justify-start gap-3", active && "bg-primary/10 text-primary font-semibold")}>
+                  <item.icon className={cn("h-4 w-4", active ? "text-primary" : "text-muted-foreground")} />
+                  {item.label}
+                </Button>
+              </Link>
+            );
+          })}
+        </div>
 
-            <Link href="/admin">
-              <Button variant={pathname === "/admin" ? "secondary" : "ghost"} className="w-full justify-start">
-                <Shield className="mr-2 h-4 w-4" />
-                Admin Overview
-              </Button>
-            </Link>
-
-            <Link href="/users">
-              <Button variant={pathname.startsWith("/users") ? "secondary" : "ghost"} className="w-full justify-start">
-                <Users className="mr-2 h-4 w-4" />
-                User List
-              </Button>
-            </Link>
-
-            <Link href="/settings">
-              <Button variant={pathname.startsWith("/settings") ? "secondary" : "ghost"} className="w-full justify-start">
-                <Settings className="mr-2 h-4 w-4" />
-                Settings
-              </Button>
-            </Link>
-          </div>
+        <div className="mt-auto border-t border-border/50 pt-4">
+          <Button 
+            variant="ghost" 
+            className="w-full justify-start text-red-500 hover:bg-red-500/10 hover:text-red-500" 
+            onClick={() => logout()}
+          >
+            <LogOut className="mr-2 h-4 w-4" /> Log Out
+          </Button>
         </div>
       </div>
-
-      <div className="px-3 py-4 space-y-1">
-        {mounted && (
-            <Button 
-                variant="ghost" 
-                className="w-full justify-start text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/50"
-                onClick={() => logout()}
-            >
-                <LogOut className="mr-2 h-4 w-4" /> Log Out
-            </Button>
-        )}
-      </div>
     </div>
-  )
+  );
 }
 
+// --- 2. THE MOBILE SIDEBAR (Drawer Trigger) ---
 export function MobileSidebar() {
-  const [isOpen, setIsOpen] = useState(false);
   const pathname = usePathname();
-  const [mounted, setMounted] = useState(false)
+  const [isOpen, setIsOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
-  useEffect(() => setMounted(true), [])
+  useEffect(() => setMounted(true), []);
+  useEffect(() => setIsOpen(false), [pathname]); // Close drawer on navigation
+
+  if (!mounted) return null;
 
   return (
     <>
-      <Button variant="ghost" size="icon" onClick={() => setIsOpen(true)} className="md:hidden">
+      <Button 
+        variant="ghost" 
+        size="icon"
+        className="lg:hidden shrink-0"
+        onClick={() => setIsOpen(true)}
+      >
         <Menu className="h-6 w-6" />
       </Button>
 
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex">
-          <div className="fixed inset-0 bg-black/80 transition-opacity" onClick={() => setIsOpen(false)} />
-          <div className="relative flex w-64 max-w-xs flex-1 flex-col bg-sidebar text-sidebar-foreground pb-4 pt-5 shadow-xl transition-all duration-300 ease-in-out border-r border-sidebar-border">
-            <div className="absolute right-0 top-0 -mr-12 pt-2">
-              <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)}>
-                <X className="h-6 w-6 text-white" />
-              </Button>
+        <div className="fixed inset-0 z-[100] flex lg:hidden animate-in fade-in duration-200">
+          {/* Backdrop */}
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsOpen(false)} />
+          
+          {/* Drawer Content */}
+          <div className="relative w-[280px] bg-sidebar h-full shadow-2xl p-6 flex flex-col animate-in slide-in-from-left duration-300">
+            <div className="flex items-center justify-between mb-8">
+               <div>
+                  <h2 className="text-xl font-bold tracking-tight text-primary">Adminarr</h2>
+                  <p className="text-[9px] text-muted-foreground uppercase tracking-widest font-bold">Mobile Terminal</p>
+               </div>
+               <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)}>
+                  <X className="h-5 w-5" />
+               </Button>
             </div>
 
-            <div className="flex-1 px-2 pb-4 flex flex-col justify-between">
-              <div className="px-3 py-2">
-                <h2 className="mb-6 px-4 text-lg font-semibold tracking-tight">Adminarr</h2>
-                <div className="space-y-1">
-                  
-                  <Link href="/admin" onClick={() => setIsOpen(false)}>
-                    <Button variant={pathname === "/admin" ? "secondary" : "ghost"} className="w-full justify-start">
-                      <Shield className="mr-2 h-4 w-4" /> Admin Overview
+            <div className="space-y-2 flex-1 overflow-y-auto">
+              {navItems.map((item) => {
+                const active = item.exact ? pathname === item.href : pathname.startsWith(item.href);
+                return (
+                  <Link key={item.href} href={item.href}>
+                    <Button variant={active ? "secondary" : "ghost"} className="w-full justify-start gap-3 text-base">
+                      <item.icon className={cn("h-5 w-5", active ? "text-primary" : "text-muted-foreground")} />
+                      {item.label}
                     </Button>
                   </Link>
-                  
-                  <Link href="/users" onClick={() => setIsOpen(false)}>
-                    <Button variant={pathname.startsWith("/users") ? "secondary" : "ghost"} className="w-full justify-start">
-                      <Users className="mr-2 h-4 w-4" /> User List
-                    </Button>
-                  </Link>
+                );
+              })}
+            </div>
 
-                  <Link href="/settings" onClick={() => setIsOpen(false)}>
-                    <Button variant={pathname === "/settings" ? "secondary" : "ghost"} className="w-full justify-start">
-                      <Settings className="mr-2 h-4 w-4" /> Settings
-                    </Button>
-                  </Link>
-
-                   <div className="mt-8 border-t pt-4">
-                        <Button variant="ghost" className="w-full justify-start text-red-500" onClick={() => logout()}>
-                            <LogOut className="mr-2 h-4 w-4" /> Log Out
-                        </Button>
-                    </div>
-                </div>
-              </div>
+            <div className="mt-auto border-t pt-4">
+              <Button 
+                variant="ghost" 
+                className="w-full justify-start text-red-500 text-base" 
+                onClick={() => logout()}
+              >
+                <LogOut className="mr-3 h-5 w-5" /> Log Out
+              </Button>
             </div>
           </div>
         </div>
