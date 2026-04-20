@@ -7,7 +7,15 @@ RUN apk add --no-cache libc6-compat openssl
 # Install dependencies only when needed
 FROM base AS deps
 WORKDIR /app
+    
+# 1. Copy package files
 COPY package.json package-lock.json* ./
+
+# 2. Copy the Prisma schema and the new Prisma 7 config
+COPY prisma ./prisma/
+COPY prisma.config.ts ./
+    
+# 3. NOW run the install (which will trigger prisma generate successfully)
 RUN npm install
 
 # Rebuild the source code only when necessary
