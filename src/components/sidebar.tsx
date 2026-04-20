@@ -14,21 +14,19 @@ import {
   LogOut,
   Shield,
   Trash2,
-  Activity,
-  Layers,
+  DollarSign, // Added for Payments
   LayoutDashboard
 } from "lucide-react";
 
-// --- SHARED NAVIGATION CONFIG ---
+// --- MASTER'S ACTIVE NAVIGATION ---
 const navItems = [
   { href: "/admin", icon: Shield, label: "Admin Overview", exact: true },
   { href: "/optimizer", icon: Trash2, label: "Media Optimizer" },
   { href: "/users", icon: Users, label: "User List" },
-  { href: "/payments", icon: Users, label: "Payments" },
+  { href: "/payments", icon: DollarSign, label: "Payments" },
   { href: "/settings", icon: Settings, label: "System Settings" },
 ];
 
-// --- 1. THE MAIN SIDEBAR (Desktop) ---
 export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
   const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
@@ -72,45 +70,32 @@ export function Sidebar({ className }: React.HTMLAttributes<HTMLDivElement>) {
   );
 }
 
-// --- 2. THE MOBILE SIDEBAR (Drawer Trigger) ---
 export function MobileSidebar() {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => setMounted(true), []);
-  useEffect(() => setIsOpen(false), [pathname]); // Close drawer on navigation
+  useEffect(() => setIsOpen(false), [pathname]);
 
   if (!mounted) return null;
 
   return (
     <>
-      <Button 
-        variant="ghost" 
-        size="icon"
-        className="lg:hidden shrink-0"
-        onClick={() => setIsOpen(true)}
-      >
+      <Button variant="ghost" size="icon" className="lg:hidden shrink-0" onClick={() => setIsOpen(true)}>
         <Menu className="h-6 w-6" />
       </Button>
-
       {isOpen && (
         <div className="fixed inset-0 z-[100] flex lg:hidden animate-in fade-in duration-200">
-          {/* Backdrop */}
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsOpen(false)} />
-          
-          {/* Drawer Content */}
           <div className="relative w-[280px] bg-sidebar h-full shadow-2xl p-6 flex flex-col animate-in slide-in-from-left duration-300">
             <div className="flex items-center justify-between mb-8">
                <div>
                   <h2 className="text-xl font-bold tracking-tight text-primary">Adminarr</h2>
                   <p className="text-[9px] text-muted-foreground uppercase tracking-widest font-bold">Mobile Terminal</p>
                </div>
-               <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)}>
-                  <X className="h-5 w-5" />
-               </Button>
+               <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)}><X className="h-5 w-5" /></Button>
             </div>
-
             <div className="space-y-2 flex-1 overflow-y-auto">
               {navItems.map((item) => {
                 const active = item.exact ? pathname === item.href : pathname.startsWith(item.href);
@@ -124,13 +109,8 @@ export function MobileSidebar() {
                 );
               })}
             </div>
-
             <div className="mt-auto border-t pt-4">
-              <Button 
-                variant="ghost" 
-                className="w-full justify-start text-red-500 text-base" 
-                onClick={() => logout()}
-              >
+              <Button variant="ghost" className="w-full justify-start text-red-500 text-base" onClick={() => logout()}>
                 <LogOut className="mr-3 h-5 w-5" /> Log Out
               </Button>
             </div>

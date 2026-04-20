@@ -23,6 +23,14 @@ model Settings {
   lastAutoSync     DateTime?
   monthlyFee       Float     @default(18.00)
   yearlyFee        Float     @default(180.00)
+  plexDbMain       String?   @default("/mnt/user/appdata/plex/Library/Application Support/Plex Media Server/Plug-in Support/Databases/com.plexapp.plugins.library.db")
+  plexDbKids       String?   @default("/mnt/remotes/Kid_Server_Appdata/KidsPlexServer/Library/Application Support/Plex Media Server/Plug-in Support/Databases/com.plexapp.plugins.library.db")
+  plexDbBackup     String?   @default("/mnt/remotes/Kid_Server_Appdata/MainPlexBackup/Library/Application Support/Plex Media Server/Plug-in Support/Databases/com.plexapp.plugins.library.db")
+  tdarrUrl         String?   @default("http://192.168.1.87:8265")
+  optimizerSchedule String?  @default("0 0 * * *") // Daily at midnight
+  warningThreshold    Int?      @default(70) 
+  deletionThreshold   Int?      @default(75)
+  purgeAmount         Int?      @default(5)
 }
 
 model TautulliInstance {

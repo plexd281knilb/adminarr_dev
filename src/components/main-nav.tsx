@@ -7,9 +7,8 @@ import {
     LayoutDashboard, 
     Users, 
     Settings, 
-    Activity, 
-    Layers,
-    Trash2 
+    Trash2,
+    DollarSign 
 } from "lucide-react";
 
 export function MainNav({ className, ...props }: React.HTMLAttributes<HTMLElement>) {
@@ -34,10 +33,9 @@ export function MainNav({ className, ...props }: React.HTMLAttributes<HTMLElemen
   return (
     <nav className={cn("flex items-center space-x-4 lg:space-x-6", className)} {...props}>
       <LinkItem href="/admin" icon={LayoutDashboard} label="Dashboard" exact />
-      <LinkItem href="/monitoring" icon={Activity} label="Infrastructure" />
-      <LinkItem href="/apps" icon={Layers} label="Apps" />
-      <LinkItem href="/cleanup" icon={Trash2} label="Optimizer" />
+      <LinkItem href="/optimizer" icon={Trash2} label="Optimizer" />
       <LinkItem href="/users" icon={Users} label="Users" />
+      <LinkItem href="/payments" icon={DollarSign} label="Payments" />
       <LinkItem href="/settings" icon={Settings} label="Settings" />
     </nav>
   );
