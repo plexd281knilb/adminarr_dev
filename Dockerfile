@@ -56,7 +56,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.ts ./
 # CRITICAL FIX: Copy node_modules so the startup CMD has access to Prisma CLI
 COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
 
-USER nextjs
+# USER nextjs
 
 EXPOSE 3000
 
