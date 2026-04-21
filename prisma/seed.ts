@@ -1,8 +1,22 @@
 // prisma/seed.ts
 import { PrismaClient } from '@prisma/client';
+import Database from 'better-sqlite3';
+import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import bcrypt from 'bcryptjs';
 
-const prisma = new PrismaClient();
+// 1. Initialize the native SQLite database connection
+// We use the environment variable if available, stripping the "file:" prefix, or default to the local path.
+const dbPath = process.env.DATABASE_URL 
+  ? process.env.DATABASE_URL.replace('file:', '') 
+  : './dev.db';
+
+const sqlite = new Database(dbPath);
+
+// 2. Wrap it in the Prisma 7 Adapter
+const adapter = new PrismaBetterSqlite3(sqlite);
+
+// 3. Initialize Prisma with the adapter
+const prisma = new PrismaClient({ adapter });
 
 async function main() {
   const adminEmail = 'admin@adminarr.local';
@@ -46,7 +60,7 @@ async function main() {
 
 main()
   .catch((e) => {
-    console.error('❌ Error seeding database:', e);
+    console.error(e);
     process.exit(1);
   })
   .finally(async () => {
