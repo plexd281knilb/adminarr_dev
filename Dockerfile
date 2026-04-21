@@ -61,4 +61,4 @@ COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
 EXPOSE 3000
 
 # Run migrations, seed the initial admin/settings, and start the Next.js server
-CMD ["sh", "-c", "npx prisma db push && npx tsx prisma/seed.ts && node server.js"]
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss && npx tsx prisma/seed.ts && node server.js"]
