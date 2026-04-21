@@ -27,6 +27,11 @@ COPY . .
 # Generate Prisma Client
 RUN npx prisma generate
 
+# CRITICAL FIX: Bypass self-signed SSL cert errors during build, and create 
+# a dummy data folder so Next.js doesn't panic during static pre-rendering.
+ENV NODE_TLS_REJECT_UNAUTHORIZED="0"
+RUN mkdir -p /app/data
+
 RUN npm run build
 
 # Production image, copy all the files and run next
@@ -34,29 +39,26 @@ FROM base AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
-# CRITICAL FIX: Tell Prisma where the database is inside the container
 ENV DATABASE_URL="file:/app/data/dev.db"
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+# CRITICAL FIX: Tell Node to permanently trust Unraid's self-signed certificates
+ENV NODE_TLS_REJECT_UNAUTHORIZED="0"
 
-# Create the data directory and set permissions for SQLite
-RUN mkdir -p /app/data && chown -R nextjs:nodejs /app/data
+# Create the data directory for the live container
+RUN mkdir -p /app/data
 
 COPY --from=builder /app/public ./public
 # Automatically leverage output traces to reduce image size
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
 # Copy Prisma schema and config
-COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
-COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.ts ./
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/prisma.config.ts ./
 
 # CRITICAL FIX: Copy node_modules so the startup CMD has access to Prisma CLI
-COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
-
-# USER nextjs
+COPY --from=deps /app/node_modules ./node_modules
 
 EXPOSE 3000
 
