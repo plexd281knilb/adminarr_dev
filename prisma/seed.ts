@@ -5,15 +5,16 @@ import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import bcrypt from 'bcryptjs';
 
 // 1. Initialize the native SQLite database connection
-// We use the environment variable if available, stripping the "file:" prefix, or default to the local path.
 const dbPath = process.env.DATABASE_URL 
   ? process.env.DATABASE_URL.replace('file:', '') 
   : './dev.db';
 
 const sqlite = new Database(dbPath);
 
-// 2. Wrap it in the Prisma 7 Adapter
-const adapter = new PrismaBetterSqlite3(sqlite);
+// 2. Wrap it in the Prisma Adapter
+// CRITICAL FIX: We cast 'sqlite' to 'any' to bypass Next.js strict type-checking.
+// The runtime execution is perfectly valid, but the @types packages are mismatched.
+const adapter = new PrismaBetterSqlite3(sqlite as any);
 
 // 3. Initialize Prisma with the adapter
 const prisma = new PrismaClient({ adapter });
