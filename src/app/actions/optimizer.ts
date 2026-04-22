@@ -30,44 +30,64 @@ export async function saveOptimizerSettings(data: any) {
 
 export async function getDiskUsage() {
   const settings = await prisma.settings.findFirst({ where: { id: "global" } });
-  const mountPath = "/mnt/user"; // Hardcoded for Unraid standard
+  const mountPath = "/mnt/user"; 
   try {
     const stats = await statfs(mountPath);
     return Math.round(((stats.blocks - stats.bfree) / stats.blocks) * 100);
   } catch { return 0; }
 }
 
-// Helper to generate the massive path-replacement SQL block
-const getSelectBlock = (dbPrefix = "") => `
-  SELECT 
-      CASE WHEN mi.guid LIKE '%local%' THEN hints ELSE mi.guid END AS guid,
-      CASE WHEN datetime(mi.created_at, 'unixepoch', 'localtime') > miv.viewed_at 
-           THEN datetime(mi.created_at, 'unixepoch', 'localtime') 
-           ELSE IFNULL(miv.viewed_at, datetime(mi.created_at, 'unixepoch', 'localtime')) 
-      END AS active_dt,
-      CASE 
-          WHEN mp.file LIKE '%/Kid_TV/%'      THEN replace(mp.file,'/Kid_TV/','/mnt/user/Kid_TV_Shows/')
-          WHEN mp.file LIKE '%/Kid_tvshows/%' THEN replace(mp.file,'/Kid_tvshows/','/mnt/user/Kid_TV_Shows/')
-          WHEN mp.file LIKE '%/4k_tv_shows/%' THEN replace(mp.file,'/4k_tv_shows/','/mnt/user/4k_TV_Shows/')
-          WHEN mp.file LIKE '%/tvshows/%'     THEN replace(mp.file,'/tvshows/','/mnt/user/Kid_TV_Shows/')
-          WHEN mp.file LIKE '%/tv_shows/%'    THEN replace(mp.file,'/tv_shows/','/mnt/user/TV_Shows/')
-          WHEN mp.file LIKE '%/tv/%'          THEN replace(mp.file,'/tv/','/mnt/user/TV_Shows/')
-          WHEN mp.file LIKE '%/4k_Movies/%'   THEN replace(mp.file,'/4k_Movies/','/mnt/user/4k_Movies/')
-          WHEN mp.file LIKE '%/4k_movies/%'   THEN replace(mp.file,'/4k_movies/','/mnt/user/4k_Movies/')
-          WHEN mp.file LIKE '%/Kid_Movies/%'  THEN replace(mp.file,'/Kid_Movies/','/mnt/user/Kid_Movies/')
-          WHEN mp.file LIKE '%/Kid_movies/%'  THEN replace(mp.file,'/Kid_movies/','/mnt/user/Kid_Movies/')
-          WHEN mp.file LIKE '%/movies/%' AND ls.name = 'Kids Movies' THEN replace(mp.file,'/movies/','/mnt/user/Kid_Movies/')
-          WHEN mp.file LIKE '%/movies/%'      THEN replace(mp.file,'/movies/','/mnt/user/Movies/')
-          ELSE mp.file
-      END AS file_path,
-      mitem.video_codec
-  FROM ${dbPrefix}metadata_items AS mi
-  JOIN ${dbPrefix}library_sections AS ls ON mi.library_section_id = ls.id
-  JOIN ${dbPrefix}media_items AS mitem ON mitem.metadata_item_id = mi.id
-  JOIN ${dbPrefix}media_parts AS mp ON mp.media_item_id = mitem.id
-  LEFT JOIN (SELECT MAX(datetime(viewed_at, 'unixepoch', 'localtime')) AS viewed_at, guid FROM ${dbPrefix}metadata_item_views GROUP BY guid) miv ON miv.guid = mi.guid
-  WHERE ls.name IN ('Movies','TV Shows', 'Kids Movies', 'Kids TV Shows')
-`;
+// ----------------------------------------------------------------------
+// JAVASCRIPT TRANSLATOR: Offloads the heavy string replacements from SQLite to V8
+// ----------------------------------------------------------------------
+function translatePath(filePath: string, libraryName: string): string {
+    if (filePath.includes('/Kid_TV/')) return filePath.replace('/Kid_TV/', '/mnt/user/Kid_TV_Shows/');
+    if (filePath.includes('/Kid_tvshows/')) return filePath.replace('/Kid_tvshows/', '/mnt/user/Kid_TV_Shows/');
+    if (filePath.includes('/4k_tv_shows/')) return filePath.replace('/4k_tv_shows/', '/mnt/user/4k_TV_Shows/');
+    if (filePath.includes('/tvshows/')) return filePath.replace('/tvshows/', '/mnt/user/Kid_TV_Shows/');
+    if (filePath.includes('/tv_shows/')) return filePath.replace('/tv_shows/', '/mnt/user/TV_Shows/');
+    if (filePath.includes('/tv/')) return filePath.replace('/tv/', '/mnt/user/TV_Shows/');
+    if (filePath.includes('/4k_Movies/')) return filePath.replace('/4k_Movies/', '/mnt/user/4k_Movies/');
+    if (filePath.includes('/4k_movies/')) return filePath.replace('/4k_movies/', '/mnt/user/4k_Movies/');
+    if (filePath.includes('/Kid_Movies/')) return filePath.replace('/Kid_Movies/', '/mnt/user/Kid_Movies/');
+    if (filePath.includes('/Kid_movies/')) return filePath.replace('/Kid_movies/', '/mnt/user/Kid_Movies/');
+    if (filePath.includes('/movies/') && libraryName === 'Kids Movies') return filePath.replace('/movies/', '/mnt/user/Kid_Movies/');
+    if (filePath.includes('/movies/')) return filePath.replace('/movies/', '/mnt/user/Movies/');
+    return filePath;
+}
+
+// Helper to scan a single SQLite database without crashing it
+function scanSingleDatabase(dbPath: string): any[] {
+    let db: Database.Database | null = null;
+    try {
+        db = new Database(dbPath, { readonly: true });
+        
+        // A much simpler query. No UNION ALL, no string replacing.
+        const stmt = db.prepare(`
+            SELECT 
+                CASE WHEN mi.guid LIKE '%local%' THEN hints ELSE mi.guid END AS guid,
+                CASE WHEN datetime(mi.created_at, 'unixepoch', 'localtime') > miv.viewed_at 
+                     THEN datetime(mi.created_at, 'unixepoch', 'localtime') 
+                     ELSE IFNULL(miv.viewed_at, datetime(mi.created_at, 'unixepoch', 'localtime')) 
+                END AS active_dt,
+                mp.file AS raw_file_path,
+                ls.name AS library_name,
+                mitem.video_codec
+            FROM metadata_items AS mi
+            JOIN library_sections AS ls ON mi.library_section_id = ls.id
+            JOIN media_items AS mitem ON mitem.metadata_item_id = mi.id
+            JOIN media_parts AS mp ON mp.media_item_id = mitem.id
+            LEFT JOIN (SELECT MAX(datetime(viewed_at, 'unixepoch', 'localtime')) AS viewed_at, guid FROM metadata_item_views GROUP BY guid) miv ON miv.guid = mi.guid
+            WHERE ls.name IN ('Movies','TV Shows', 'Kids Movies', 'Kids TV Shows')
+        `);
+        return stmt.all();
+    } catch (e) {
+        console.error(`Failed to scan DB: ${dbPath}`, e);
+        return [];
+    } finally {
+        if (db) db.close();
+    }
+}
 
 export async function getOldestMedia() {
   const settings = await prisma.settings.findFirst({ where: { id: "global" } });
@@ -78,52 +98,70 @@ export async function getOldestMedia() {
   const DB_KIDS_TMP = `/tmp/kids_plex_${runId}.db`;
   const DB_BACKUP_TMP = `/tmp/backup_plex_${runId}.db`;
   
-  let db: Database.Database | null = null;
+  let allRawRows: any[] = [];
 
   try {
-    if (fs.existsSync(settings.plexDbMain)) fs.copyFileSync(settings.plexDbMain, DB_MAIN_TMP);
-    if (settings.plexDbKids && fs.existsSync(settings.plexDbKids)) fs.copyFileSync(settings.plexDbKids, DB_KIDS_TMP);
-    if (settings.plexDbBackup && fs.existsSync(settings.plexDbBackup)) fs.copyFileSync(settings.plexDbBackup, DB_BACKUP_TMP);
-
-    db = new Database(DB_MAIN_TMP, { readonly: true });
-    
-    // Dynamically build the query based on which databases actually exist
-    let queryBlocks = [getSelectBlock("")]; // Main DB
-
-    if (fs.existsSync(DB_KIDS_TMP)) {
-      db.exec(`ATTACH DATABASE '${DB_KIDS_TMP}' AS kids;`);
-      queryBlocks.push(getSelectBlock("kids."));
+    // 1. Copy and scan databases individually to prevent SQLite crashes
+    if (fs.existsSync(settings.plexDbMain)) {
+        fs.copyFileSync(settings.plexDbMain, DB_MAIN_TMP);
+        allRawRows = allRawRows.concat(scanSingleDatabase(DB_MAIN_TMP));
     }
-    
-    if (fs.existsSync(DB_BACKUP_TMP)) {
-      db.exec(`ATTACH DATABASE '${DB_BACKUP_TMP}' AS backup;`);
-      queryBlocks.push(getSelectBlock("backup."));
+    if (settings.plexDbKids && fs.existsSync(settings.plexDbKids)) {
+        fs.copyFileSync(settings.plexDbKids, DB_KIDS_TMP);
+        allRawRows = allRawRows.concat(scanSingleDatabase(DB_KIDS_TMP));
+    }
+    if (settings.plexDbBackup && fs.existsSync(settings.plexDbBackup)) {
+        fs.copyFileSync(settings.plexDbBackup, DB_BACKUP_TMP);
+        allRawRows = allRawRows.concat(scanSingleDatabase(DB_BACKUP_TMP));
     }
 
-    const finalQuery = `
-      WITH AllMedia AS (
-          ${queryBlocks.join("\nUNION ALL\n")}
-      ),
-      GlobalGuidActivity AS (
-          SELECT guid, MAX(active_dt) AS latest_activity
-          FROM AllMedia
-          GROUP BY guid
-      )
-      SELECT DISTINCT ga.latest_activity, am.file_path, am.guid, am.video_codec
-      FROM AllMedia am
-      JOIN GlobalGuidActivity ga ON am.guid = ga.guid
-      WHERE am.file_path LIKE '/mnt/user/%' 
-        AND am.file_path NOT LIKE '%placeholders%'
-      ORDER BY ga.latest_activity ASC LIMIT 50;
-    `;
+    // 2. Process Data in JavaScript (Lightning Fast)
+    const globalGuidActivity = new Map<string, string>(); 
+    const validMediaItems: any[] = [];
 
-    const stmt = db.prepare(finalQuery);
-    return stmt.all() as any[];
-  } catch (error) {
-    console.error("SQL Error in getOldestMedia:", error);
-    return [];
+    for (const row of allRawRows) {
+        // Translate the path using JS instead of SQL
+        const finalPath = translatePath(row.raw_file_path, row.library_name);
+        
+        // Filter paths and placeholders exactly like the Bash script
+        if (!finalPath.startsWith('/mnt/user/') || finalPath.includes('placeholders')) continue;
+
+        validMediaItems.push({
+            guid: row.guid,
+            file_path: finalPath,
+            video_codec: row.video_codec,
+            active_dt: row.active_dt
+        });
+
+        // Track the absolute newest date across all databases for each media item
+        const currentMax = globalGuidActivity.get(row.guid);
+        if (!currentMax || row.active_dt > currentMax) {
+            globalGuidActivity.set(row.guid, row.active_dt);
+        }
+    }
+
+    // 3. De-duplicate and assign the Global Date
+    const uniquePaths = new Set<string>();
+    const finalResults = [];
+
+    for (const item of validMediaItems) {
+        if (!uniquePaths.has(item.file_path)) {
+            uniquePaths.add(item.file_path);
+            finalResults.push({
+                latest_activity: globalGuidActivity.get(item.guid),
+                file_path: item.file_path,
+                guid: item.guid,
+                video_codec: item.video_codec
+            });
+        }
+    }
+
+    // 4. Sort Oldest to Newest and slice the top 50
+    finalResults.sort((a, b) => (a.latest_activity < b.latest_activity ? -1 : 1));
+    return finalResults.slice(0, 50);
+
   } finally {
-    if (db) db.close();
+    // Cleanup Temp Files
     [DB_MAIN_TMP, DB_KIDS_TMP, DB_BACKUP_TMP].forEach(f => { if (fs.existsSync(f)) fs.unlinkSync(f); });
   }
 }
@@ -131,7 +169,6 @@ export async function getOldestMedia() {
 export async function bulkQueueInTdarr(filePaths: string[]) {
   const settings = await prisma.settings.findFirst({ where: { id: "global" } });
   let successCount = 0;
-
   for (const path of filePaths) {
     try {
       const res = await fetch(`${settings?.tdarrUrl}/api/v2/cruddb`, {
