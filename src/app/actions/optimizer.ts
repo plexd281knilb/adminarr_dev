@@ -62,7 +62,6 @@ function scanSingleDatabase(dbPath: string): any[] {
     try {
         db = new Database(dbPath, { readonly: true });
         
-        // A much simpler query. No UNION ALL, no string replacing.
         const stmt = db.prepare(`
             SELECT 
                 CASE WHEN mi.guid LIKE '%local%' THEN hints ELSE mi.guid END AS guid,
@@ -101,7 +100,6 @@ export async function getOldestMedia() {
   let allRawRows: any[] = [];
 
   try {
-    // 1. Copy and scan databases individually to prevent SQLite crashes
     if (fs.existsSync(settings.plexDbMain)) {
         fs.copyFileSync(settings.plexDbMain, DB_MAIN_TMP);
         allRawRows = allRawRows.concat(scanSingleDatabase(DB_MAIN_TMP));
@@ -115,15 +113,12 @@ export async function getOldestMedia() {
         allRawRows = allRawRows.concat(scanSingleDatabase(DB_BACKUP_TMP));
     }
 
-    // 2. Process Data in JavaScript (Lightning Fast)
     const globalGuidActivity = new Map<string, string>(); 
     const validMediaItems: any[] = [];
 
     for (const row of allRawRows) {
-        // Translate the path using JS instead of SQL
         const finalPath = translatePath(row.raw_file_path, row.library_name);
         
-        // Filter paths and placeholders exactly like the Bash script
         if (!finalPath.startsWith('/mnt/user/') || finalPath.includes('placeholders')) continue;
 
         validMediaItems.push({
@@ -133,14 +128,12 @@ export async function getOldestMedia() {
             active_dt: row.active_dt
         });
 
-        // Track the absolute newest date across all databases for each media item
         const currentMax = globalGuidActivity.get(row.guid);
         if (!currentMax || row.active_dt > currentMax) {
             globalGuidActivity.set(row.guid, row.active_dt);
         }
     }
 
-    // 3. De-duplicate and assign the Global Date
     const uniquePaths = new Set<string>();
     const finalResults = [];
 
@@ -148,7 +141,8 @@ export async function getOldestMedia() {
         if (!uniquePaths.has(item.file_path)) {
             uniquePaths.add(item.file_path);
             finalResults.push({
-                latest_activity: globalGuidActivity.get(item.guid),
+                // CRITICAL FIX: Add a fallback empty string to satisfy TypeScript's strict type checking
+                latest_activity: globalGuidActivity.get(item.guid) || "", 
                 file_path: item.file_path,
                 guid: item.guid,
                 video_codec: item.video_codec
@@ -156,12 +150,10 @@ export async function getOldestMedia() {
         }
     }
 
-    // 4. Sort Oldest to Newest and slice the top 50
     finalResults.sort((a, b) => (a.latest_activity < b.latest_activity ? -1 : 1));
     return finalResults.slice(0, 50);
 
   } finally {
-    // Cleanup Temp Files
     [DB_MAIN_TMP, DB_KIDS_TMP, DB_BACKUP_TMP].forEach(f => { if (fs.existsSync(f)) fs.unlinkSync(f); });
   }
 }
